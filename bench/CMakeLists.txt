@@ -1,0 +1,2 @@
+add_executable(counter_bench counter_bench.cpp)
+target_link_libraries(counter_bench PRIVATE Threads::Threads)

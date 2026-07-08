@@ -1,0 +1,23 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: release
+            flags: -DCMAKE_BUILD_TYPE=Release
+          - name: asan
+            flags: -DCMAKE_BUILD_TYPE=Debug -DSANITIZE=address
+          - name: tsan
+            flags: -DCMAKE_BUILD_TYPE=Debug -DSANITIZE=thread
+    steps:
+      - uses: actions/checkout@v4
+      - run: cmake -B build ${{ matrix.flags }}
+      - run: cmake --build build -j
+      - name: smoke (release only)
+        if: matrix.name == 'release'
+        run: ./build/bench/counter_bench
+        # Benchmark numbers you publish always come from local pinned runs, never CI —
+        # shared runners are noisy (other tenants, no core pinning, variable clock speed).
