@@ -12,8 +12,11 @@
 #include <chrono>
 #include <iostream>
 #include <functional>
+#include <limits>
+
+#if defined(__APPLE__)
 #include <pthread.h>
-#include <limits> // Required header
+#endif
 
 /**************** Constants ****************/
 constexpr long TOTAL_INCREMENTS = 10000000;
@@ -57,7 +60,9 @@ void run_and_report(const char* name, std::function<long long()> variant_fn) {
 void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex) {
     // lock_guard initializes when function comes into view of stack
     // deconstructs once function leaves stack
+#if defined(__APPLE__)
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
     for (long n = 0; n < increment_count; n++) {
         std::lock_guard<std::mutex> guard(counter_mutex);
         counter += 1;
@@ -78,7 +83,9 @@ long long run_mutex_variant() {
 }
 
 void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter) {
+#if defined(__APPLE__)
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
     for (long n = 0; n < increment_count; n++) {
         counter.fetch_add(1, std::memory_order_relaxed);
     }
