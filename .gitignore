@@ -2,3 +2,6 @@ build/
 build-*/
 compile_commands.json
 .cache/
+notes/.obsidian
+*.xlsx
+*.DS_Store
