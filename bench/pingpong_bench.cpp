@@ -9,7 +9,6 @@
 
 /**************** Includes ****************/
 #include <atomic>
-#include <cassert>
 #include <thread>
 #include <vector>
 #include <chrono>

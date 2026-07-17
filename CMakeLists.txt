@@ -21,6 +21,7 @@ endif()
 find_package(Threads REQUIRED)
 
 add_subdirectory(bench)
+add_subdirectory(experiments)
 # add_subdirectory(spsc)      # Week 4 — becomes a library; pipeline/ will link it
 # add_subdirectory(lob)       # Week 7
 # add_subdirectory(feed)      # Week 10
