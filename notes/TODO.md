@@ -9,7 +9,7 @@ Priority markers use the Obsidian **Tasks** plugin convention (🔺 highest → 
 - [ ] 🔺 **Write up and explain the percentiles from BOTH `counter_bench` (V1-V4) and `pingpong_bench` in `notes/`.** Not just the raw numbers — explain _why_ each shape looks the way it does: counter_bench's mutex-vs-atomic-vs-sharded story (11x, then ~27x from padding alone, both traced to real cache-line addresses), and pingpong's flat-body/sharp-tail distribution (p1-p75 essentially flat at ~83-125ns, p99/p99.9 pulling away sharply — busy-spin exposure to OS scheduling). Include the open question on what's driving pingpong's p0.1=42ns floor (true hardware cache-bounce cost vs. spin-poll variance — currently unresolved, say so rather than guess).
 - [x] 🔺 Ping-pong benchmark, flag-only variant (`relaxed` only, no payload/acquire-release) — build alongside the existing acquire/release version for the ARM-vs-x86 ordering-cost comparison. Same 10M-sample count so the two distributions are directly comparable. ✅ 2026-07-14
 - [x] 🔺 CAS spinlock in `experiments/` (your code) ✅ 2026-07-17
-- [ ] 🔺 Deliberately-broken ABA demo in `experiments/` — use `std::this_thread::sleep_for` to force the vulnerable interleaving on demand
+- [x] 🔺 Deliberately-broken ABA demo in `experiments/` — use `std::this_thread::sleep_for` to force the vulnerable interleaving on demand ✅ 2026-07-17
 - [ ] 🔺 MESI/MSI cache coherency — rewrite from scratch, no reference material, into `notes/`. Paste for an accuracy check afterward.
 
 ## ⏫ High
