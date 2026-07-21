@@ -75,7 +75,10 @@ public:
     T* operator->() const { return ptr; }
 };
 
-
+template<typename T, typename... Args>
+UniquePtr<T> make_unique(Args&&... args) {
+    return UniquePtr<T>(new T(std::forward<Args>(args)...));
+}
 /**************** Worker Functions ****************/
 
 /**************** Main Function ****************/
@@ -108,6 +111,9 @@ int main() {
     std::cout << "Value of point x should be 1 and is: " << point_ptr->x << std::endl;
     std::cout << "Value of point y should be 2 and is: " << point_ptr->y << std::endl;
 
+    UniquePtr<Point> point_ptr_unique = make_unique<Point>(1, 2);
+    std::cout << "make_unique point x should be 1 and is: " << point_ptr_unique->x << std::endl;
+    std::cout << "make_unique point y should be 2 and is: " << point_ptr_unique->y << std::endl;
 
     return 0;
 }
