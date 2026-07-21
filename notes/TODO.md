@@ -22,7 +22,7 @@ Priority markers use the Obsidian **Tasks** plugin convention (🔺 highest → 
 - [ ] 🔼 Set up LLDB thread debugging (VSCode + CodeLLDB, or terminal LLDB) — use during the CAS/ABA work via `watchpoint set variable`
 - [ ] 🔼 Confirm `THREADING_WARMUP_FINDINGS.md` is actually in `notes/` and `git add`ed
 - [x] 🔼 Initialize `elapsed_ns_min` in `counter_bench.cpp`'s `run_and_report` (currently uninitialized; safe today only because the loop always runs at least once) ✅ 2026-07-17
-- [ ] 🔼 `run_and_report`'s hardcoded `TOTAL_INCREMENTS` divisor — never actually bit anything since pingpong built its own separate harness, but still live if that function is ever reused for a different op count
+- [x] 🔼 `run_and_report`'s hardcoded `TOTAL_INCREMENTS` divisor — never actually bit anything since pingpong built its own separate harness, but still live if that function is ever reused for a different op count ✅ 2026-07-20
 
 ## 🔽 Low — cosmetic, whenever
 
