@@ -3,5 +3,6 @@ build-*/
 compile_commands.json
 .cache/
 notes/.obsidian
+notes/external/
 *.xlsx
 *.DS_Store

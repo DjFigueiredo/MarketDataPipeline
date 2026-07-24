@@ -9,22 +9,18 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include <array>
 #include <chrono>
 #include <iostream>
 #include <functional>
 #include <limits>
-
-#if defined(__APPLE__)
-#include <pthread.h>
-#endif
+#include "bench_utils.h"
 
 /**************** Constants ****************/
 constexpr long TOTAL_INCREMENTS = 10000000;
 constexpr int NUM_THREADS = 4;
 constexpr auto THREAD_INCREMENT_COUNT = TOTAL_INCREMENTS / NUM_THREADS;
 constexpr int NUM_RUNS = 20;
-/**************** Global Variables ****************/
-
 
 /**************** Worker Functions ****************/
 
@@ -54,75 +50,86 @@ void run_and_report(const char* name, std::function<long long()> variant_fn) {
     std::cout << "BEST: ns per operation: " << ns_per_op_min << std::endl;
     std::cout << "AVERAGE: ns per operation: " << ns_per_op_sum / NUM_RUNS << std::endl;
     std::cout << "----------------" << name << " end ----------------" << std::endl;
-
 }
 
-void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex) {
-    // lock_guard initializes when function comes into view of stack
-    // deconstructs once function leaves stack
-#if defined(__APPLE__)
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-#endif
+void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex,
+                             int thread_idx, CoreSnapshot& snap_start, CoreSnapshot& snap_end) {
+    pin_thread_to_core(thread_idx * 2);  // cores 0, 2, 4, 6 — skip HT siblings
+    snap_start = take_core_snapshot();
     for (long n = 0; n < increment_count; n++) {
         std::lock_guard<std::mutex> guard(counter_mutex);
         counter += 1;
     }
+    snap_end = take_core_snapshot();
+}
+
+void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter,
+                              int thread_idx, CoreSnapshot& snap_start, CoreSnapshot& snap_end) {
+    pin_thread_to_core(thread_idx * 2);  // cores 0, 2, 4, 6 — skip HT siblings
+    snap_start = take_core_snapshot();
+    for (long n = 0; n < increment_count; n++) {
+        counter.fetch_add(1, std::memory_order_relaxed);
+    }
+    snap_end = take_core_snapshot();
 }
 
 long long run_mutex_variant() {
     long long counter = 0;
     std::mutex counter_mutex;
-    std::vector<std::thread> thread_vect;
+    std::vector<std::thread> pool;
+    std::array<CoreSnapshot, NUM_THREADS> snaps_start{}, snaps_end{};
     for (int n = 0; n < NUM_THREADS; n++) {
-        thread_vect.emplace_back(increment_counter_mutex, THREAD_INCREMENT_COUNT, std::ref(counter), std::ref(counter_mutex));
+        pool.emplace_back(increment_counter_mutex, THREAD_INCREMENT_COUNT, std::ref(counter),
+                          std::ref(counter_mutex), n,
+                          std::ref(snaps_start[static_cast<size_t>(n)]),
+                          std::ref(snaps_end[static_cast<size_t>(n)]));
     }
-    for (auto& thread_obj: thread_vect) {
-        thread_obj.join();
+    for (int n = 0; n < NUM_THREADS; n++) {
+        pool[static_cast<size_t>(n)].join();
+        print_core_snapshot("start", snaps_start[static_cast<size_t>(n)]);
+        print_core_snapshot("end  ", snaps_end[static_cast<size_t>(n)]);
     }
     return counter;
 }
 
-void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter) {
-#if defined(__APPLE__)
-    pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
-#endif
-    for (long n = 0; n < increment_count; n++) {
-        counter.fetch_add(1, std::memory_order_relaxed);
-    }
-}
+struct alignas(64) aligned_atomic_vector {
+    // Forces all four atomics onto one cache line — true 4-way false sharing.
+    std::atomic_int64_t atomic_vector[4]{0};
+};
 
 long long run_atomic_variant() {
     std::atomic_int64_t counter{0};
     std::vector<std::thread> pool;
+    std::array<CoreSnapshot, NUM_THREADS> snaps_start{}, snaps_end{};
     for (int n = 0; n < NUM_THREADS; n++) {
-        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(counter));
+        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(counter), n,
+                          std::ref(snaps_start[static_cast<size_t>(n)]),
+                          std::ref(snaps_end[static_cast<size_t>(n)]));
     }
-
-    for (auto& thread_obj: pool) {
-        thread_obj.join();
+    for (int n = 0; n < NUM_THREADS; n++) {
+        pool[static_cast<size_t>(n)].join();
+        print_core_snapshot("start", snaps_start[static_cast<size_t>(n)]);
+        print_core_snapshot("end  ", snaps_end[static_cast<size_t>(n)]);
     }
     return counter.load(std::memory_order_relaxed);
 }
 
-struct alignas(64) aligned_atomic_vector {
-    // The goal of variant three is to see how there is false sharing occuring.
-    // As such, if the atomic_ints were in different 64 byte cache lines, we would not actually see that.
-    // This forces our vector to share a single cacheline, and as such we see the tradeoff.
-    // Each core has to bounce that cacheline to the next, which is the false sharing part.
-    // Hardware is also important, MAC has much better cache coherency, and as such will be faster.
-    std::atomic_int64_t atomic_vector[4]{0};
-};
-
 long long run_sharded_unpadded_variant() {
     aligned_atomic_vector counter;
     std::vector<std::thread> pool;
+    std::array<CoreSnapshot, NUM_THREADS> snaps_start{}, snaps_end{};
     for (int n = 0; n < NUM_THREADS; n++) {
-        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(counter.atomic_vector[n]));
+        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT,
+                          std::ref(counter.atomic_vector[n]), n,
+                          std::ref(snaps_start[static_cast<size_t>(n)]),
+                          std::ref(snaps_end[static_cast<size_t>(n)]));
     }
     long long counter_sum = 0;
     for (int n = 0; n < NUM_THREADS; n++) {
         pool[static_cast<size_t>(n)].join();
         counter_sum += counter.atomic_vector[n].load(std::memory_order_relaxed);
+        print_core_snapshot("start", snaps_start[static_cast<size_t>(n)]);
+        print_core_snapshot("end  ", snaps_end[static_cast<size_t>(n)]);
     }
     return counter_sum;
 }
@@ -134,17 +141,22 @@ struct alignas(64) single_aligned_atomic {
 long long run_sharded_padded_variant() {
     std::vector<single_aligned_atomic> atomic_counters(4);
     std::vector<std::thread> pool;
+    std::array<CoreSnapshot, NUM_THREADS> snaps_start{}, snaps_end{};
     for (int n = 0; n < NUM_THREADS; n++) {
-        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(atomic_counters[static_cast<size_t>(n)].counter));
+        pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT,
+                          std::ref(atomic_counters[static_cast<size_t>(n)].counter), n,
+                          std::ref(snaps_start[static_cast<size_t>(n)]),
+                          std::ref(snaps_end[static_cast<size_t>(n)]));
     }
     long long counter_sum = 0;
     for (int n = 0; n < NUM_THREADS; n++) {
         pool[static_cast<size_t>(n)].join();
         counter_sum += atomic_counters[static_cast<size_t>(n)].counter.load(std::memory_order_relaxed);
+        print_core_snapshot("start", snaps_start[static_cast<size_t>(n)]);
+        print_core_snapshot("end  ", snaps_end[static_cast<size_t>(n)]);
     }
     return counter_sum;
 }
-
 
 /**************** Main Function ****************/
 int main() {
@@ -154,6 +166,3 @@ int main() {
     run_and_report("V4 sharded padded",   run_sharded_padded_variant);
     return 0;
 }
-
-
-
