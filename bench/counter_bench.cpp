@@ -54,7 +54,7 @@ void run_and_report(const char* name, std::function<long long()> variant_fn) {
 
 void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex,
                              int thread_idx, CoreSnapshot& snap_start, CoreSnapshot& snap_end) {
-    pin_thread_to_core(thread_idx * 2);  // cores 0, 2, 4, 6 — skip HT siblings
+    pin_thread_to_core(thread_idx * 2 + 4);  // cores 4, 6, 8, 10 — skip HT siblings, avoid cold cores 0/2
     snap_start = take_core_snapshot();
     for (long n = 0; n < increment_count; n++) {
         std::lock_guard<std::mutex> guard(counter_mutex);
@@ -65,7 +65,7 @@ void increment_counter_mutex(long increment_count, long long& counter, std::mute
 
 void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter,
                               int thread_idx, CoreSnapshot& snap_start, CoreSnapshot& snap_end) {
-    pin_thread_to_core(thread_idx * 2);  // cores 0, 2, 4, 6 — skip HT siblings
+    pin_thread_to_core(thread_idx * 2 + 4);  // cores 4, 6, 8, 10 — skip HT siblings, avoid cold cores 0/2
     snap_start = take_core_snapshot();
     for (long n = 0; n < increment_count; n++) {
         counter.fetch_add(1, std::memory_order_relaxed);

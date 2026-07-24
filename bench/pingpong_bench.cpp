@@ -29,7 +29,7 @@ CoreSnapshot receiver_snap_start{}, receiver_snap_end{};
 
 /**************** Worker Functions ****************/
 void sender_thread() {
-    pin_thread_to_core(0);
+    pin_thread_to_core(4);
     sender_snap_start = take_core_snapshot();
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
         const auto start = std::chrono::steady_clock::now();
@@ -44,7 +44,7 @@ void sender_thread() {
 }
 
 void receiver_thread() {
-    pin_thread_to_core(2);
+    pin_thread_to_core(6);
     receiver_snap_start = take_core_snapshot();
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
         while(flag.load(std::memory_order_acquire) != 1);
