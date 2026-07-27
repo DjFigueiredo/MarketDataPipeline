@@ -2,55 +2,42 @@
 # Memory Orders #
 #flashcards/MemoryOrders
 
-What is memory_order_relaxed
+What is memory_order_relaxed and when is it legal?
 ?
-Relaxed operation, no synchronization or ordering constrains imposed on other reads/writes.
+No ordering constraints beyond atomicity — the operation is atomic but can be reordered freely relative to other operations. Legal on any atomic. Use only when no sequencing relative to other variables is needed (e.g., a thread reading its own counter).
 
-When is memory_order_relaxed legal
+What is memory_order_acquire and when is it legal?
 ?
-Any atomic operation, but only when ordering relative to other variables does not matter.
-
-What is memory_order_consume
-?
-A load operation with this memory order performs `consume` on the affected memory location. No reads or writes in the current thread dependending on the value currently loaded can be reordered before this load. Other threads writing to this can will be seen by the current thread.
-
-When is memory_order_consume legal
-?
-Loads only, rarely used in practice.
-<!--SR:!2026-07-23,1,230-->
-
-
-What is memory_order_acquire
-?
-A load operation with this memory order performs `acquire` on the affected memory location. No reads or wirites in the current thread can be reordered before this load. All writes in other threads that release the same variable are visible in the current thread.
+A load that prevents any subsequent reads/writes from being reordered before it. Pairs with a release store — all writes the releasing thread made before its store are visible to you after this load. Legal on loads and the success side of RMW. Illegal on plain stores.
 <!--SR:!2026-07-25,3,250-->
 
-When is memory_order_acquire legal
+What is memory_order_release and when is it legal?
 ?
-For loads only (Or rmw success side). Illegal on plain stores
+A store that prevents any preceding reads/writes from being reordered after it. All writes before this store become visible to any thread that acquires the same atomic. Legal on stores and RMW. Illegal on plain loads.
 
-What is memory_order_release
+What is memory_order_acq_rel and when is it legal?
 ?
-A store operation with this memory order performs the `release` on the affected memory location. No reads or writes in the current thread can be reordered after this store. All writes in current thread are visible in other threads acquiring the same atomic variable.
+An RMW that is both an acquire (on the load half) and a release (on the store half). Nothing can be reordered across it in either direction. Legal on RMW operations only (CAS, fetch_add, exchange). Illegal on plain loads or stores.
 
-When is memory_order_release legal
+What is memory_order_seq_cst and when is it legal?
 ?
-Stores only (or RMW). Illegal on plain loads.
+Acquire + release + a single global total order that all threads observe for all seq_cst operations. On x86, emits mfence or a locked instruction on stores. Legal anywhere, but the most expensive option — use only when global ordering across multiple atomics is actually required.
 
-What is memory_order_acq_rel (Acquire release)
+# ARM64 vs x86 #
+#flashcards/MemoryOrders
+
+What is x86 TSO and why does it matter for acquire/release?
 ?
-A read-modify-write operation with this memory order is both an `acquire` and `release`. No memory reads or writes in current thread can be reordered before the load, nor after the store.All writes in other threads that release same variable are visible before modification, and modification is visible in other threads.
+Total Store Order: x86 hardware guarantees stores are never reordered with prior stores, and loads are never reordered with prior loads. Acquire/release semantics are nearly free — the hardware already provides them. No extra barrier instructions are emitted for acquire loads or release stores on x86.
 
-When is memory_order_acq_rel legal
+Why does acquire/release cost more on ARM64 than x86?
 ?
-RMW operations only (CAS, fetch_add, etc.). Illegal on plain loads or stores.
+ARM64 has a weak memory model — loads and stores can be reordered in any direction by the CPU. Acquire/release requires explicit barrier instructions (ldar for load-acquire, stlr for store-release). x86 TSO provides the same ordering implicitly, so no extra instructions are needed there.
 
-What is memory_order_seq_cst()
+What instructions implement acquire/release on ARM64?
 ?
-A load operation with this memory order performs an `acquire`, a store performs a `release`, and read-modify-write performs both. Plus a single total order exists in which all threads observe al modifications in the same order.
+ldar (load-acquire) and stlr (store-release). ldar prevents any subsequent load/store from being reordered before it. stlr prevents any prior load/store from being reordered after it. x86 generates no equivalent extra instructions because TSO provides the ordering for free.
 
-When is memory_order_seq_cst legal
+What does a release store prevent, and what does an acquire load prevent?
 ?
-Legal anywhere - but expensive. Only when need total global order.
-
-
+Release store: all prior reads/writes cannot move after it — it's the publication fence. Acquire load: all subsequent reads/writes cannot move before it — once you see the released value, all writes before the release are visible. Together they create a happens-before edge between the two threads.
