@@ -29,7 +29,7 @@ struct Item {
     int val;
 }; // Shared cacheline
 
-struct alignas(std::hardware_destructive_interference_size) PaddedItem {
+struct alignas(CACHE_LINE_SIZE) PaddedItem {
     int val;
 }; // own cacheline
 

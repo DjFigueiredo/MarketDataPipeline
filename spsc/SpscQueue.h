@@ -13,6 +13,8 @@
 #include <cstddef>
 #include <new>
 
+inline constexpr std::size_t CACHE_LINE_SIZE = 64;
+
 /**************** Classes *************************/
 
 template <typename T, std::size_t Capacity>
@@ -53,8 +55,8 @@ private:
     // However, we will instead use the same test cases twice, one that is aligned, and the
     // Other not aligned to see the true tradeoff.
     std::array<T, Capacity> buf_;
-    alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> head_{0};
-    alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> tail_{0};
+    alignas(CACHE_LINE_SIZE) std::atomic<std::size_t> head_{0};
+    alignas(CACHE_LINE_SIZE) std::atomic<std::size_t> tail_{0};
 };
 
 #endif // SPSCQUEUE_H
