@@ -11,8 +11,8 @@ The class we will develop is a templated Class called SpscQueue. It will maintai
 public:
 private:
 std::array<T, Capacity> buf_; // ring buffer
-alignas(64) std::atomic<std::size_t> head_{0}; // head idx
-alignas(64) std::atomic<std::size_t> tail_{0}; // tail idx
+alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> head_{0}; // head idx
+alignas(std::hardware_destructive_interference_size) std::atomic<std::size_t> tail_{0}; // tail idx
 ```
 Capacity is a **compile-time template parameter**, so validation must happen at compile time. We will use a `static_assert`:
 ```cpp
@@ -25,7 +25,7 @@ static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
 
 If indices reset on wrap, you need to sacrifice a slot or track a flag to distinguish full from empty. Monotonic indices avoid that entirely.
 
-The reasoning for our alignas on tail and head is so they utilize their own cacheline, this is to avoid `false sharing`. Otherwise caches would be invalidated every other operand, and would require re-retrieving over and over.
+The reasoning for our alignas on tail and head is so they utilize their own cacheline, this is to avoid `false sharing`. Otherwise caches would be invalidated every other operand, and would require re-retrieving over and over. We use `std::hardware_destructive_interference_size` (C++17, `<new>`) instead of hardcoding 64 — it gives the correct cache line size as a compile-time constant for the target platform.
 
 ## Public Worker Functions ##
 
