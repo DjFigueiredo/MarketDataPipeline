@@ -20,6 +20,7 @@ struct CoreSnapshot {
 #include <pthread.h>
 #include <sched.h>
 #include <fstream>
+#include <immintrin.h>
 
 inline void pin_thread_to_core(int core_id) {
     cpu_set_t cpuset;
@@ -38,8 +39,19 @@ inline CoreSnapshot take_core_snapshot() {
     return {cpu, freq_khz / 1000};
 }
 
+inline void spin_hint() {
+    _mm_pause();
+}
+
+inline uint64_t rdtsc() {
+    unsigned int lo, hi;
+    __asm__ __volatile__("rdtsc" : "=a"(lo), "=d"(hi));
+    return (static_cast<uint64_t>(hi) << 32) | lo;
+}
+
 #elif defined(__APPLE__)
 #include <pthread.h>
+#include <chrono>
 
 inline void pin_thread_to_core(int) {
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0);
@@ -49,9 +61,24 @@ inline CoreSnapshot take_core_snapshot() {
     return {-1, -1};  // macOS has no per-thread core/freq query
 }
 
+inline void spin_hint() {
+    __builtin_arm_yield();
+}
+
+inline uint64_t rdtsc() {
+    return static_cast<uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+}
+
 #else
+#include <chrono>
 inline void pin_thread_to_core(int) {}
 inline CoreSnapshot take_core_snapshot() { return {-1, -1}; }
+inline void spin_hint() {}
+inline uint64_t rdtsc() {
+    return static_cast<uint64_t>(
+        std::chrono::steady_clock::now().time_since_epoch().count());
+}
 #endif
 
 inline void print_core_snapshot(const char* label, const CoreSnapshot& snap) {

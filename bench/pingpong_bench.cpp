@@ -28,20 +28,19 @@ int counter = 0;
 void sender_thread() {
     pin_thread_to_core(4);
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
-        const auto start = std::chrono::steady_clock::now();
+        const auto start = rdtsc();
         counter += 1;
         flag.store(1, std::memory_order_release);
-        while(flag.load(std::memory_order_acquire) != 0);
-        const auto end = std::chrono::steady_clock::now();
-        const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-        round_trip_samples.push_back(static_cast<int64_t>(elapsed_ns));
+        while(flag.load(std::memory_order_acquire) != 0) spin_hint();
+        const auto end = rdtsc();
+        round_trip_samples.push_back(static_cast<int64_t>(end - start));
     }
 }
 
 void receiver_thread() {
     pin_thread_to_core(6);
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
-        while(flag.load(std::memory_order_acquire) != 1);
+        while(flag.load(std::memory_order_acquire) != 1) spin_hint();
         asm volatile("" : : "r,m"(counter) : "memory");
         flag.store(0, std::memory_order_release);
     }

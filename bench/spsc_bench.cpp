@@ -15,10 +15,8 @@
 #include <chrono>
 #include <algorithm>
 #include <string>
-#ifdef __linux__
-#include <pthread.h>
-#endif
 #include "SpscQueue.h"
+#include "bench_utils.h"
 
 /**************** Constants ****************/
 constexpr std::size_t TEST_CONCURRENCY_QUEUE_SIZE = 1024;
@@ -93,36 +91,24 @@ void test_concurrency() {
     std::cout << "Concurrency test passed: " << TEST_CONCURRENCY_N << " items transferred in order." << std::endl;
 }
 
-void pin_thread(int core_id) {
-#ifdef __APPLE__
-    // macOS has no hard affinity API — no-op
-    (void)core_id;
-    pthread_set_qos_class_self_np(QoS_CLASS_USER_INTERACTIVE, 0);
-#elif defined(__linux__)
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(core_id, &cpuset);
-    pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-#endif
-}
-
 template <typename T>
 void producer_bench_thread(const std::size_t n, SpscQueue<T, BENCH_QUEUE_SIZE>& queue_) {
-    pin_thread(PRODUCER_CORE);
+    pin_thread_to_core(PRODUCER_CORE);
     for (std::size_t i = 0; i < n; ) {
         if (queue_.try_push(T{static_cast<int>(i)})) ++i;
+        else spin_hint();
     }
 }
 
 template <typename T>
 void consumer_bench_thread(const std::size_t n, SpscQueue<T, BENCH_QUEUE_SIZE>& queue_, std::vector<int64_t>& timestamps) {
-    pin_thread(CONSUMER_CORE);
+    pin_thread_to_core(CONSUMER_CORE);
     T out;
     for (std::size_t i = 0; i < n; ) {
         if (queue_.try_pop(out)) {
             timestamps[i] = std::chrono::steady_clock::now().time_since_epoch().count();
             ++i;
-        }
+        } else spin_hint();
     }
 }
 
