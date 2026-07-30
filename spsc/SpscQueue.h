@@ -13,7 +13,14 @@
 #include <cstddef>
 #include <new>
 
+#ifndef CACHE_LINE_SIZE_DEFINED
+#define CACHE_LINE_SIZE_DEFINED
+#ifdef __APPLE__
+inline constexpr std::size_t CACHE_LINE_SIZE = 128;
+#else
 inline constexpr std::size_t CACHE_LINE_SIZE = 64;
+#endif
+#endif
 
 /**************** Classes *************************/
 
