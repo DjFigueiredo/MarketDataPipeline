@@ -24,6 +24,7 @@ constexpr std::size_t TEST_CONCURRENCY_N          = TEST_CONCURRENCY_QUEUE_SIZE 
 
 constexpr std::size_t BENCH_QUEUE_SIZE = 1024;
 constexpr std::size_t BENCH_N         = 1 << 20; // 1M items
+constexpr int         BENCH_RUNS      = 10;
 
 constexpr int PRODUCER_CORE = 0;
 constexpr int CONSUMER_CORE = 1;
@@ -120,30 +121,36 @@ int64_t percentile(std::vector<int64_t>& samples, double p) {
 
 template <typename T>
 void run_benchmark(const std::string& label) {
-    SpscQueue<T, BENCH_QUEUE_SIZE> queue_;
-    std::vector<int64_t> timestamps(BENCH_N);
+    int64_t best_throughput = 0;
+    std::vector<int64_t> best_deltas;
 
-    auto wall_start = std::chrono::steady_clock::now();
-    std::thread prod(producer_bench_thread<T>, BENCH_N, std::ref(queue_));
-    std::thread cons(consumer_bench_thread<T>, BENCH_N, std::ref(queue_), std::ref(timestamps));
-    prod.join();
-    cons.join();
-    auto wall_end = std::chrono::steady_clock::now();
+    for (int r = 0; r < BENCH_RUNS; ++r) {
+        SpscQueue<T, BENCH_QUEUE_SIZE> queue_;
+        std::vector<int64_t> timestamps(BENCH_N);
 
-    int64_t elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_end - wall_start).count();
-    double throughput  = static_cast<double>(BENCH_N) / static_cast<double>(elapsed_ns) * 1e9;
+        auto wall_start = std::chrono::steady_clock::now();
+        std::thread prod(producer_bench_thread<T>, BENCH_N, std::ref(queue_));
+        std::thread cons(consumer_bench_thread<T>, BENCH_N, std::ref(queue_), std::ref(timestamps));
+        prod.join();
+        cons.join();
+        auto wall_end = std::chrono::steady_clock::now();
 
-    // Inter-arrival deltas between consecutive consumer pops as latency proxy
-    std::vector<int64_t> deltas(BENCH_N - 1);
-    for (std::size_t i = 1; i < BENCH_N; ++i) {
-        deltas[i - 1] = timestamps[i] - timestamps[i - 1];
+        int64_t elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(wall_end - wall_start).count();
+        int64_t throughput = static_cast<int64_t>(static_cast<double>(BENCH_N) / static_cast<double>(elapsed_ns) * 1e9);
+
+        if (throughput > best_throughput) {
+            best_throughput = throughput;
+            best_deltas.resize(BENCH_N - 1);
+            for (std::size_t i = 1; i < BENCH_N; ++i)
+                best_deltas[i - 1] = timestamps[i] - timestamps[i - 1];
+        }
     }
 
-    std::cout << "\n" << label << ":\n"
-              << "  Throughput : " << static_cast<int64_t>(throughput) << " ops/sec\n"
-              << "  p50        : " << percentile(deltas, 0.50)  << " ns\n"
-              << "  p99        : " << percentile(deltas, 0.99)  << " ns\n"
-              << "  p99.9      : " << percentile(deltas, 0.999) << " ns\n";
+    std::cout << "\n" << label << " (best of " << BENCH_RUNS << "):\n"
+              << "  Throughput : " << best_throughput << " ops/sec\n"
+              << "  p50        : " << percentile(best_deltas, 0.50)  << " ns\n"
+              << "  p99        : " << percentile(best_deltas, 0.99)  << " ns\n"
+              << "  p99.9      : " << percentile(best_deltas, 0.999) << " ns\n";
 }
 
 void shared_cacheline_benchmark() {
@@ -156,6 +163,7 @@ void padded_benchmark() {
 
 /**************** Main Function *******************/
 int main() {
+    check_cpu_governor();
     bool size_test_passed = size_test();
     std::cout << "Size Test Passed: " << size_test_passed << std::endl;
     test_concurrency();

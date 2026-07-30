@@ -22,6 +22,17 @@ class SpscQueue {
     static_assert((Capacity & (Capacity - 1)) == 0, "Capacity must be power of 2");
 public:
     // Producer Thread
+    bool try_push(const T& item) {
+        const auto t = tail_.load(std::memory_order_relaxed);
+        const auto h = head_.load(std::memory_order_acquire);
+        if (t - h == Capacity) {
+            return false;  // full
+        }
+        buf_[t & (Capacity - 1)] = item;
+        tail_.store(t + 1, std::memory_order_release);
+        return true;
+    }
+
     bool try_push(T&& item) {
         const auto t = tail_.load(std::memory_order_relaxed);
         const auto h = head_.load(std::memory_order_acquire);

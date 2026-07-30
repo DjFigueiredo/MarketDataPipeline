@@ -26,7 +26,7 @@ int counter = 0;
 
 /**************** Worker Functions ****************/
 void sender_thread() {
-    pin_thread_to_core(4);
+    pin_thread_to_core(0);
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
         const auto start = rdtsc();
         counter += 1;
@@ -38,7 +38,7 @@ void sender_thread() {
 }
 
 void receiver_thread() {
-    pin_thread_to_core(6);
+    pin_thread_to_core(1);
     for (int idx = 0; idx < static_cast<int>(NUM_ROUND_TRIPS); idx++) {
         while(flag.load(std::memory_order_acquire) != 1) spin_hint();
         asm volatile("" : : "r,m"(counter) : "memory");
@@ -57,6 +57,7 @@ auto percentile(double percentage) {
 
 /**************** Main Function ****************/
 int main() {
+    check_cpu_governor();
     round_trip_samples.reserve(NUM_ROUND_TRIPS);
     std::thread thread1(sender_thread);
     std::thread thread2(receiver_thread);
@@ -64,12 +65,13 @@ int main() {
     thread2.join();
 
     std::sort(round_trip_samples.begin(), round_trip_samples.end());
-    std::cout << "p0.1: "  << percentile(0.001)  << "ns\n";
-    std::cout << "p1: "    << percentile(0.01)   << "ns\n";
-    std::cout << "p25: "   << percentile(0.25)   << "ns\n";
-    std::cout << "p50: "   << percentile(0.50)   << "ns\n";
-    std::cout << "p75: "   << percentile(0.75)   << "ns\n";
-    std::cout << "p99: "   << percentile(0.99)   << "ns\n";
-    std::cout << "p99.9: " << percentile(0.9999) << "ns\n";
+    const char* unit = timing_unit();
+    std::cout << "p0.1: "  << percentile(0.001)  << " " << unit << "\n";
+    std::cout << "p1: "    << percentile(0.01)   << " " << unit << "\n";
+    std::cout << "p25: "   << percentile(0.25)   << " " << unit << "\n";
+    std::cout << "p50: "   << percentile(0.50)   << " " << unit << "\n";
+    std::cout << "p75: "   << percentile(0.75)   << " " << unit << "\n";
+    std::cout << "p99: "   << percentile(0.99)   << " " << unit << "\n";
+    std::cout << "p99.9: " << percentile(0.9999) << " " << unit << "\n";
     return !(counter == NUM_ROUND_TRIPS);
 }
