@@ -52,7 +52,7 @@ void run_and_report(const char* name, std::function<long long()> variant_fn) {
 }
 
 void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex, int thread_idx) {
-    pin_thread_to_core(thread_idx * 2 + 4);  // cores 4, 6, 8, 10 — skip HT siblings, avoid cold cores 0/2
+    pin_thread_to_core(thread_idx + 4);  // cores 4, 5, 6, 7 — separate physical cores, clear of isolcpus set (0-3) and their HT siblings (10-13)
     for (long n = 0; n < increment_count; n++) {
         std::lock_guard<std::mutex> guard(counter_mutex);
         counter += 1;
@@ -60,7 +60,7 @@ void increment_counter_mutex(long increment_count, long long& counter, std::mute
 }
 
 void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter, int thread_idx) {
-    pin_thread_to_core(thread_idx * 2 + 4);  // cores 4, 6, 8, 10 — skip HT siblings, avoid cold cores 0/2
+    pin_thread_to_core(thread_idx + 4);  // cores 4, 5, 6, 7 — separate physical cores, clear of isolcpus set (0-3) and their HT siblings (10-13)
     for (long n = 0; n < increment_count; n++) {
         counter.fetch_add(1, std::memory_order_relaxed);
     }
@@ -77,7 +77,7 @@ long long run_mutex_variant() {
     return counter;
 }
 
-struct alignas(64) aligned_atomic_vector {
+struct alignas(CACHE_LINE_SIZE) aligned_atomic_vector {
     // Forces all four atomics onto one cache line — true 4-way false sharing.
     std::atomic_int64_t atomic_vector[4]{0};
 };
@@ -106,7 +106,7 @@ long long run_sharded_unpadded_variant() {
     return counter_sum;
 }
 
-struct alignas(64) single_aligned_atomic {
+struct alignas(CACHE_LINE_SIZE) single_aligned_atomic {
     std::atomic_int64_t counter{0};
 };
 
@@ -126,6 +126,7 @@ long long run_sharded_padded_variant() {
 
 /**************** Main Function ****************/
 int main() {
+    check_cpu_governor();
     run_and_report("V1 mutex",            run_mutex_variant);
     run_and_report("V2 atomic",           run_atomic_variant);
     run_and_report("V3 sharded unpadded", run_sharded_unpadded_variant);

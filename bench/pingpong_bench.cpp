@@ -21,8 +21,8 @@ constexpr int NUM_ROUND_TRIPS = 10000000;
 /**************** Global Variables ****************/
 std::vector<int64_t> round_trip_samples;
 
-std::atomic_int32_t flag = {0};
-int counter = 0;
+alignas(CACHE_LINE_SIZE) std::atomic_int32_t flag = {0};
+alignas(CACHE_LINE_SIZE) int counter = 0;
 
 /**************** Worker Functions ****************/
 void sender_thread() {
@@ -72,6 +72,6 @@ int main() {
     std::cout << "p50: "   << percentile(0.50)   << " " << unit << "\n";
     std::cout << "p75: "   << percentile(0.75)   << " " << unit << "\n";
     std::cout << "p99: "   << percentile(0.99)   << " " << unit << "\n";
-    std::cout << "p99.9: " << percentile(0.9999) << " " << unit << "\n";
+    std::cout << "p99.9: " << percentile(0.999)  << " " << unit << "\n";
     return !(counter == NUM_ROUND_TRIPS);
 }

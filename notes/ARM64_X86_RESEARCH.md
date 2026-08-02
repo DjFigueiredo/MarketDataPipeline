@@ -47,9 +47,12 @@ Cite this section's source as DJ's own platform configuration, not a third-party
 
 ## Testing
 
+We have three benchmarks we are going to look at. Counter Benchmark, Pingpong Benchmark, and SPSC Benchmark. Below you will find details and test results for each benchmark.
+
 **Target word count: ~850 words across all subsections**
 
 **Guideline:** Three benchmarks in order — counter_bench, pingpong_bench, spsc_bench. Each subsection: (1) what it measures and why, (2) results table, (3) mechanism explanation tied directly to numbers, (4) cross-platform comparison. Lean on tables for data; prose carries only the mechanism and the "why this number." Every sentence should be carrying a number, a mechanism, or a citation.
+
 
 ---
 
@@ -61,12 +64,15 @@ Cite this section's source as DJ's own platform configuration, not a third-party
 
 Results table (fill in from `test_results_mac.txt` and `test_results_linux.txt`):
 
-| Variant                | Mac Best (ns/op) | Mac Avg (ns/op) | Linux Best (ns/op) | Linux Avg (ns/op) |
-| ---------------------- | ---------------- | --------------- | ------------------ | ----------------- |
-| V1 — mutex            |                  |                 |                    |                   |
-| V2 — atomic (shared)  |                  |                 |                    |                   |
-| V3 — sharded unpadded |                  |                 |                    |                   |
-| V4 — sharded padded   |                  |                 |                    |                   |
+The first series of tests is 4 variations of incrementing a counter 10 million times across 4 threads.
+#### V1 Mutex
+
+|Variant|Mac BEST (ns/op)|Mac AVG (ns/op)|Linux BEST (ns/op)|Linux AVG (ns/op)|
+|---|---|---|---|---|
+|V1 mutex|12.746|13.531|56.743|57.676|
+|V2 atomic (shared)|5.434|5.986|15.684|15.830|
+|V3 sharded unpadded|5.171|5.483|14.129|14.188|
+|V4 sharded padded|0.489|0.492|0.933|0.958|
 
 Key findings to cover in prose:
 
