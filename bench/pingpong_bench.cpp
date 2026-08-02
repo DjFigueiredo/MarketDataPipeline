@@ -21,8 +21,8 @@ constexpr int NUM_ROUND_TRIPS = 10000000;
 /**************** Global Variables ****************/
 std::vector<int64_t> round_trip_samples;
 
-alignas(CACHE_LINE_SIZE) std::atomic_int32_t flag = {0};
-alignas(CACHE_LINE_SIZE) int counter = 0;
+std::atomic_int32_t flag = {0};
+int counter = 0;
 
 /**************** Worker Functions ****************/
 void sender_thread() {
