@@ -45,6 +45,50 @@ Cite this section's source as DJ's own platform configuration, not a third-party
 
 ---
 
+## How I Measured
+
+### Timing
+
+Both platforms use the highest-resolution timer available without OS involvement on the hot path.
+
+**Linux (x86-64):** `rdtscp` — Intel's serializing timestamp counter. Serializing means the CPU cannot reorder instructions across it, so the counter captures the actual start and end of the measured region without speculative leakage. The TSC is invariant on the i9-10900: it ticks at a fixed frequency regardless of CPU boost state or C-state transitions. That frequency was not assumed from the spec sheet — it was calibrated at runtime by correlating `rdtscp` deltas against `CLOCK_MONOTONIC_RAW` over a 200 ms `nanosleep` interval. Measured TSC frequency: **2.808 GHz**. All cycle counts in this document convert to nanoseconds using that calibrated figure.
+
+**macOS (ARM64):** `mach_absolute_time()` converted via `mach_timebase_info` — Apple's recommended high-resolution timer. On M3 Pro this ticks at 24 MHz (~41.7 ns per tick). This is a hard resolution floor: any latency value reported on Mac is quantized to the nearest tick boundary. Throughput measurements are reliable; latency percentiles are tick counts, not exact nanoseconds. This quantization is called out explicitly wherever it affects interpretation.
+
+### CPU Frequency and Stability
+
+**Linux:** CPU governor was set to `performance` via `cpupower frequency-set -g performance`, and `intel_pstate` minimum performance was pinned to 100% (`/sys/devices/system/cpu/intel_pstate/min_perf_pct = 100`) to prevent idle clock-down between benchmark phases. Core frequencies were sampled from `scaling_cur_freq` before and after each benchmark run to confirm stability. Turbo boost confirmed enabled (`no_turbo = 0`).
+
+**macOS:** No equivalent frequency-pinning API exists. `pthread_set_qos_class_self_np(QOS_CLASS_USER_INTERACTIVE, 0)` was used as a scheduling hint. Low Power Mode was disabled for all runs — on Apple Silicon this mode caps P-core frequency and produces 2–3× slowdowns that are indistinguishable from code regressions without an explicit A/B check. `macmon` was used to monitor cluster frequencies and confirm the M3 Pro was not throttling during benchmark runs.
+
+### Thread Pinning and Core Isolation
+
+**Linux:** `pthread_setaffinity_np` pins each thread to a specific physical core. Cores 0–3 were removed from the kernel scheduler entirely via kernel boot parameters (`isolcpus=0,1,2,3 nohz_full=0,1,2,3 rcu_nocbs=0,1,2,3`). This eliminates timer interrupts and RCU callbacks on the benchmark cores. The effect on tail latency is substantial and is quantified directly in the pingpong results.
+
+**macOS:** Hard affinity is not available — `pthread_setaffinity_np` does not exist on macOS. The QoS hint used here was tested and did not measurably tighten variance on contended variants. The macOS results therefore carry higher tail sensitivity to OS scheduler noise than the Linux results. This asymmetry is the primary reason Mac and Linux p99.9 values are not directly comparable.
+
+### Hardware Counter Collection
+
+**Linux:** `perf stat` wraps the benchmark binary to collect aggregate hardware counters (LLC load misses, instructions, cycles) without modifying the binary. Counter collection and timing runs are kept separate — the `perf` overhead does not appear in the latency numbers reported in the results tables.
+
+```bash
+perf stat -e cycles,instructions,LLC-load-misses,LLC-loads ./pingpong_bench
+```
+
+**macOS:** `xctrace` with the "CPU Counters" template is the equivalent — it accesses Apple Silicon PMU counters from the terminal without requiring the Xcode GUI. Like `perf stat`, it is run separately from the timing benchmark to avoid overhead contaminating the latency results.
+
+```bash
+xctrace record --template "CPU Counters" --launch -- ./pingpong_bench --output counters.trace
+```
+
+The resulting `.trace` file is inspected in Instruments. Note that Apple Silicon PMU counter names do not map 1:1 to Intel's (e.g., there is no direct `LLC-load-misses` equivalent by that name) — the specific counters used and their Apple Silicon labels are noted alongside each result where hardware counter data is cited.
+
+### Sampling Strategy
+
+All benchmarks use an in-process best-of-N harness rather than re-launching the binary N times. Relaunching introduces inter-run OS and thermal entropy; in-process sampling amortizes cold-start cost across one binary invocation. Counter and pingpong benchmarks use best-of-10; SPSC uses best-of-10 with 10 internal iterations. Raw samples are sorted and percentiles are computed directly — no smoothing or outlier removal.
+
+---
+
 ## Testing
 
 We have three benchmarks we are going to look at. Counter Benchmark, Pingpong Benchmark, and SPSC Benchmark. Below you will find details and test results for each benchmark.

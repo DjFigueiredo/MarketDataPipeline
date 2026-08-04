@@ -138,6 +138,31 @@ inline const char* timing_unit() { return "ns"; }
 inline void check_cpu_governor() {}
 #endif
 
+/**************** Arg Parsing ****************/
+
+struct BenchArgs {
+    int  mode    = 0;    // 0 = all variants
+    bool printed = true;
+};
+
+// Parses a single optional argv[1] of the form "<mode>" (silent) or
+// "<mode>_printed" (with output). No arg = mode 0, printed.
+inline BenchArgs parse_bench_args(int argc, char* argv[]) {
+    BenchArgs args;
+    if (argc <= 1) return args;
+    std::string arg(argv[1]);
+    const std::string suffix = "_printed";
+    if (arg.size() >= suffix.size() + 1 &&
+        arg.compare(arg.size() - suffix.size(), suffix.size(), suffix) == 0) {
+        args.printed = true;
+        args.mode    = std::stoi(arg.substr(0, arg.size() - suffix.size()));
+    } else {
+        args.printed = false;
+        args.mode    = std::stoi(arg);
+    }
+    return args;
+}
+
 inline void print_core_snapshot(const char* label, const CoreSnapshot& snap) {
     if (snap.cpu == -1) return;  // no-op on platforms that can't report
     std::cout << "  [" << label << "] core=" << snap.cpu

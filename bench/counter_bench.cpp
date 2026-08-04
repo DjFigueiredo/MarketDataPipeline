@@ -1,10 +1,17 @@
-
 /*
- * Benchmarking on macOS: disable Low Power Mode before any timed run
- * it caps max clock frequency and P-core scheduling, and produced a ~2-3x
- * slowdown in early SPSC/counter benchmarks that looked like a code regression
- * before being traced to this. pmset -g therm does not detect it
-*/
+ * Benchmarking on macOS: disable Low Power Mode before any timed run.
+ * It caps max clock frequency and P-core scheduling, and produced a ~2-3x
+ * slowdown in early benchmarks that looked like a code regression before
+ * being traced to this. pmset -g therm does not detect it.
+ *
+ * Usage: ./counter_bench [<mode>[_printed]]
+ *   1[_printed]  — V1 mutex only
+ *   2[_printed]  — V2 atomic only
+ *   3[_printed]  — V3 sharded unpadded only
+ *   4[_printed]  — V4 sharded padded only
+ *   No arg       — all variants, printed (default)
+ */
+
 /**************** Includes ****************/
 #include <mutex>
 #include <thread>
@@ -16,25 +23,25 @@
 #include "bench_utils.h"
 
 /**************** Constants ****************/
-constexpr long TOTAL_INCREMENTS = 10000000;
-constexpr int NUM_THREADS = 4;
+constexpr long TOTAL_INCREMENTS      = 10000000;
+constexpr int  NUM_THREADS           = 4;
 constexpr auto THREAD_INCREMENT_COUNT = TOTAL_INCREMENTS / NUM_THREADS;
-constexpr int NUM_RUNS = 20;
+constexpr int  NUM_RUNS              = 20;
 
 /**************** Worker Functions ****************/
 
-void run_and_report(const char* name, std::function<long long()> variant_fn) {
-    double ns_per_op_min = std::numeric_limits<double>::max();
-    double ns_per_op_sum = 0;
+void run_and_report(const char* name, std::function<long long()> variant_fn, bool printed) {
+    double    ns_per_op_min  = std::numeric_limits<double>::max();
+    double    ns_per_op_sum  = 0;
     long long elapsed_ns_min = 0;
+
     for (int n = 0; n < NUM_RUNS; n++) {
         const auto start = std::chrono::steady_clock::now();
-        long long value = variant_fn();
-        const auto end = std::chrono::steady_clock::now();
+        long long  value = variant_fn();
+        const auto end   = std::chrono::steady_clock::now();
 
-        if (value != TOTAL_INCREMENTS) {
-            std::cout << name << " Does not have the correct value: " << value << std::endl;
-        }
+        if (value != TOTAL_INCREMENTS)
+            std::cerr << name << " INCORRECT value: " << value << "\n";
 
         const auto elapsed_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         double ns_per_op = static_cast<double>(elapsed_ns) / static_cast<double>(TOTAL_INCREMENTS);
@@ -44,15 +51,18 @@ void run_and_report(const char* name, std::function<long long()> variant_fn) {
             elapsed_ns_min = elapsed_ns;
         }
     }
-    std::cout << "----------------" << name << " start ----------------" << std::endl;
-    std::cout << "Total time spent running: " << elapsed_ns_min << "ns" << std::endl;
-    std::cout << "BEST: ns per operation: " << ns_per_op_min << std::endl;
-    std::cout << "AVERAGE: ns per operation: " << ns_per_op_sum / NUM_RUNS << std::endl;
-    std::cout << "----------------" << name << " end ----------------" << std::endl;
+
+    if (printed) {
+        std::cout << "----------------" << name << " start ----------------\n";
+        std::cout << "Total time spent running: " << elapsed_ns_min << "ns\n";
+        std::cout << "BEST: ns per operation: "   << ns_per_op_min << "\n";
+        std::cout << "AVERAGE: ns per operation: " << ns_per_op_sum / NUM_RUNS << "\n";
+        std::cout << "----------------" << name << " end ----------------\n";
+    }
 }
 
 void increment_counter_mutex(long increment_count, long long& counter, std::mutex& counter_mutex, int thread_idx) {
-    pin_thread_to_core(thread_idx + 4);  // cores 4, 5, 6, 7 — separate physical cores, clear of isolcpus set (0-3) and their HT siblings (10-13)
+    pin_thread_to_core(thread_idx + 4);
     for (long n = 0; n < increment_count; n++) {
         std::lock_guard<std::mutex> guard(counter_mutex);
         counter += 1;
@@ -60,34 +70,31 @@ void increment_counter_mutex(long increment_count, long long& counter, std::mute
 }
 
 void increment_counter_atomic(long increment_count, std::atomic_int64_t& counter, int thread_idx) {
-    pin_thread_to_core(thread_idx + 4);  // cores 4, 5, 6, 7 — separate physical cores, clear of isolcpus set (0-3) and their HT siblings (10-13)
+    pin_thread_to_core(thread_idx + 4);
     for (long n = 0; n < increment_count; n++) {
         counter.fetch_add(1, std::memory_order_relaxed);
     }
 }
 
 long long run_mutex_variant() {
-    long long counter = 0;
+    long long  counter = 0;
     std::mutex counter_mutex;
     std::vector<std::thread> pool;
-    for (int n = 0; n < NUM_THREADS; n++) {
+    for (int n = 0; n < NUM_THREADS; n++)
         pool.emplace_back(increment_counter_mutex, THREAD_INCREMENT_COUNT, std::ref(counter), std::ref(counter_mutex), n);
-    }
     for (auto& t : pool) t.join();
     return counter;
 }
 
 struct alignas(CACHE_LINE_SIZE) aligned_atomic_vector {
-    // Forces all four atomics onto one cache line — true 4-way false sharing.
     std::atomic_int64_t atomic_vector[4]{0};
 };
 
 long long run_atomic_variant() {
     std::atomic_int64_t counter{0};
     std::vector<std::thread> pool;
-    for (int n = 0; n < NUM_THREADS; n++) {
+    for (int n = 0; n < NUM_THREADS; n++)
         pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(counter), n);
-    }
     for (auto& t : pool) t.join();
     return counter.load(std::memory_order_relaxed);
 }
@@ -95,9 +102,8 @@ long long run_atomic_variant() {
 long long run_sharded_unpadded_variant() {
     aligned_atomic_vector counter;
     std::vector<std::thread> pool;
-    for (int n = 0; n < NUM_THREADS; n++) {
+    for (int n = 0; n < NUM_THREADS; n++)
         pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(counter.atomic_vector[n]), n);
-    }
     long long counter_sum = 0;
     for (int n = 0; n < NUM_THREADS; n++) {
         pool[static_cast<size_t>(n)].join();
@@ -113,9 +119,8 @@ struct alignas(CACHE_LINE_SIZE) single_aligned_atomic {
 long long run_sharded_padded_variant() {
     std::vector<single_aligned_atomic> atomic_counters(4);
     std::vector<std::thread> pool;
-    for (int n = 0; n < NUM_THREADS; n++) {
+    for (int n = 0; n < NUM_THREADS; n++)
         pool.emplace_back(increment_counter_atomic, THREAD_INCREMENT_COUNT, std::ref(atomic_counters[static_cast<size_t>(n)].counter), n);
-    }
     long long counter_sum = 0;
     for (int n = 0; n < NUM_THREADS; n++) {
         pool[static_cast<size_t>(n)].join();
@@ -125,11 +130,19 @@ long long run_sharded_padded_variant() {
 }
 
 /**************** Main Function ****************/
-int main() {
-    check_cpu_governor();
-    run_and_report("V1 mutex",            run_mutex_variant);
-    run_and_report("V2 atomic",           run_atomic_variant);
-    run_and_report("V3 sharded unpadded", run_sharded_unpadded_variant);
-    run_and_report("V4 sharded padded",   run_sharded_padded_variant);
+int main(int argc, char* argv[]) {
+    auto [mode, printed] = parse_bench_args(argc, argv);
+
+    if (printed) check_cpu_governor();
+
+    auto run = [&](const char* name, std::function<long long()> fn) {
+        run_and_report(name, fn, printed);
+    };
+
+    if (mode == 0 || mode == 1) run("V1 mutex",            run_mutex_variant);
+    if (mode == 0 || mode == 2) run("V2 atomic",           run_atomic_variant);
+    if (mode == 0 || mode == 3) run("V3 sharded unpadded", run_sharded_unpadded_variant);
+    if (mode == 0 || mode == 4) run("V4 sharded padded",   run_sharded_padded_variant);
+
     return 0;
 }
