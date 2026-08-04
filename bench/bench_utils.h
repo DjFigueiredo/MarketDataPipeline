@@ -32,6 +32,7 @@ struct CoreSnapshot {
 #include <sched.h>
 #include <fstream>
 #include <immintrin.h>
+#include <time.h>
 
 inline void pin_thread_to_core(int core_id) {
     cpu_set_t cpuset;
@@ -48,6 +49,30 @@ inline CoreSnapshot take_core_snapshot() {
     long freq_khz = -1;
     f >> freq_khz;
     return {cpu, freq_khz / 1000};
+}
+
+inline long read_core_freq_mhz(int core_id) {
+    std::string path = "/sys/devices/system/cpu/cpu" + std::to_string(core_id) + "/cpufreq/scaling_cur_freq";
+    std::ifstream f(path);
+    long freq_khz = -1;
+    f >> freq_khz;
+    return freq_khz > 0 ? freq_khz / 1000 : -1;
+}
+
+// Calibrates TSC frequency by correlating rdtscp against CLOCK_MONOTONIC_RAW
+// over a 200ms sleep. Returns GHz. TSC is invariant on Intel — this gives the
+// actual conversion factor, independent of CPU boost state.
+inline double calibrate_tsc_ghz() {
+    struct timespec t0_wall, t1_wall;
+    struct timespec req = {0, 200'000'000L};
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t0_wall);
+    uint64_t t0_tsc = rdtsc();
+    nanosleep(&req, nullptr);
+    uint64_t t1_tsc = rdtsc();
+    clock_gettime(CLOCK_MONOTONIC_RAW, &t1_wall);
+    double ns_elapsed = (t1_wall.tv_sec  - t0_wall.tv_sec)  * 1e9
+                      + (t1_wall.tv_nsec - t0_wall.tv_nsec);
+    return static_cast<double>(t1_tsc - t0_tsc) / ns_elapsed;
 }
 
 inline void spin_hint() {

@@ -64,26 +64,71 @@ We have three benchmarks we are going to look at. Counter Benchmark, Pingpong Be
 
 Results table (fill in from `test_results_mac.txt` and `test_results_linux.txt`):
 
-The first series of tests is 4 variations of incrementing a counter 10 million times across 4 threads.
-#### V1 Mutex
+#### Test Variations
+The first series of tests is 4 variations of incrementing a counter 10 million times across 4 threads. Each variation removes a weakness the previous variation had. That is we start with a lock, the move to atomicity, then multiple atomic variables, followed by independent cachelines.
+1. Variant 1 Mutex: Increment the counter using a basic lock/unlock.
+2. Variant 2 Atomic: Increment the counter using a single atomic variable and memory order relaxed.
+3. Variant 3 Sharded/unpadded: Increment the counter using a atomic variable *per* thread. The atomic variables are all forced onto the same cachline.
+4. Variant 4 Sharded/Padded: Increment the counter using a atomic variable *per* thread. The atomic variables are all located on their own cacheline.
 
-|Variant|Mac BEST (ns/op)|Mac AVG (ns/op)|Linux BEST (ns/op)|Linux AVG (ns/op)|
-|---|---|---|---|---|
-|V1 mutex|12.746|13.531|56.743|57.676|
-|V2 atomic (shared)|5.434|5.986|15.684|15.830|
-|V3 sharded unpadded|5.171|5.483|14.129|14.188|
-|V4 sharded padded|0.489|0.492|0.933|0.958|
+#### Results
 
-Key findings to cover in prose:
+| Variant             | Mac BEST (ns/op) | Mac AVG (ns/op) | Linux BEST (ns/op) | Linux AVG (ns/op)  |
+| ------------------- | ---------------- | --------------- | ------------------ | ------------------ |
+| V1 mutex            | 12.746           | 13.531          | 48.782             | ~60–63 typical     |
+| V2 atomic (shared)  | 5.434            | 5.986           | 13.588             | ~15–16 typical     |
+| V3 sharded unpadded | 5.171            | 5.483           | 13.265             | ~13–17 typical     |
+| V4 sharded padded   | 0.488            | 0.492           | 0.947              | ~0.95–1.00 typical |
+#### Findings:
 
-- V1→V4 headline speedup on each platform (state the multiplier, both platforms)
-- V2→V3 gap: near-zero on Apple Silicon, more pronounced on Linux — per-cluster shared L2 hypothesis explains the Mac result (flag as "inferred"); x86 private-L2 + shared-L3-via-uncore is the contrasting mechanism
-- V3→V4 gap: the primary false-sharing signal — consistent on both platforms because padding is an ISA-independent physical effect
-- Variance as signal: V1/V4 show ~1–4% run-to-run spread; V2/V3 show ~10–11% spread despite similar means — contention-heavy variants are noisier, not just slower
+**Step-by-step speedup (best ns/op):**
 
-**Apple Silicon flag:** The per-cluster shared L2 claim must be tagged "inferred — not from published specs." Reference Dougall Johnson's reverse-engineering work as the best available public source for Apple Silicon microarchitecture.
+| Transition | Mac speedup | Linux speedup |
+| ---------- | ----------- | ------------- |
+| V1 → V2    | 2.35×       | 3.59×         |
+| V2 → V3    | 1.05×       | 1.02×         |
+| V3 → V4    | 10.6×       | 14.0×         |
+| V1 → V4    | **26.1×**   | **51.5×**     |
 
-Cite: ARM Architecture Reference Manual (barrier semantics) and Intel SDM Vol. 3A §8 (memory ordering) as the ISA contracts that ground the mechanism explanation.
+**Speedup relative to V1 (best ns/op):**
+
+| Variant             | Mac (vs V1) | Linux (vs V1) |
+| ------------------- | ----------- | ------------- |
+| V1 mutex            | 1.0×        | 1.0×          |
+| V2 atomic (shared)  | 2.35×       | 3.59×         |
+| V3 sharded unpadded | 2.47×       | 3.67×         |
+| V4 sharded padded   | **26.1×**   | **51.5×**     |
+##### V1 → V2 speedup
+Lets start with our V1 → V2 speedup. Why does our lock take so long? That comes down to the specifics of how a locking mechanism works. A lock/unlock system works such as:
+lock()
+1. Compare and Exchange Strong on the mutex state.
+2. If CAS fails
+	1. futex syscall
+	2. thread sleeps
+	3. kernel wakes it later
+3. Full memory fence (Acquire semantics)
+unlock()
+4. store mutex state back to 0.
+5. Full memory fence (Release semantics)
+6. If threads waiting -> Futex syscall to wake one
+
+Atomicity on the otherhand is much simpler.
+* On x86: `lock xadd [mem], reg`. The hardware's cache coherency protocol handles atomicity.
+* On ARM64: `ldxr/stxr` exclusive monitor loop — similarly hardware-level, no OS involvement.
+So what are we actually observing? Well atomicity is just much faster because:
+1. Less instructions per call.
+2. No OS involvement - this meas what?
+3. No kernel involvement - means what?
+
+##### V2 → V3 speedup
+V2 → V3 is actually a test that is inherently incorrect. The idea is to force **false sharing**. One would think that using 4 different atomic variables would speed up as threads are not sharing the variables anymore, meaning no collisions. However, you can see based on the struct we use that the 4 atomic variables are all defined in a contiguous array such that they are all on the same cacheline. This is where **false sharing** comes from. 
+
+**False sharing** is the idea that we think we have speedup by having each thread own its own local variables. But it is not actual sharing, as the cacheline will still be shared across multiple threads. This means each time a thread wants to read its local variable it needs to wait for the cacheline to be broadcasted on the cache interconnects, grab it, and update it, followed by putting it back out on the bus for the other caches.
+
+As such, we do not see any speedup from V2 to V3. Each time the counter is incremented it dirties that cacheline for the other threads, and they must re-retrieve the cacheline. 
+
+##### V3 → V4 speedup
+V3 → V4 has the greatest speedup. In V4 we eliminated the false sharing that was occuring. We did this using the `alignas` inline to force each atomic variable onto its own cacheline. This allowed each thread to own a single cacheline that its atomic variable lived on. Meaning it never needed to share the cacheline with the other threads. As such, there are no interrupts, no cacheline misses, and no collisions.
 
 ---
 
@@ -95,15 +140,18 @@ Cite: ARM Architecture Reference Manual (barrier semantics) and Intel SDM Vol. 3
 
 Results table (fill in from test results; Linux values in cycles with ~ns conversion at 3.7GHz):
 
-| Percentile | Mac (ns) | Linux (cycles) | Linux (~ns @ 3.7GHz) |
-| ---------- | -------- | -------------- | -------------------- |
-| p0.1       |          |                |                      |
-| p1         |          |                |                      |
-| p25        |          |                |                      |
-| p50        |          |                |                      |
-| p75        |          |                |                      |
-| p99        |          |                |                      |
-| p99.9      |          |                |                      |
+|            | Mac                    | Linux                        | Linux                 |
+| ---------- | ---------------------- | ---------------------------- | --------------------- |
+| Timer unit | ns (24MHz, ~42ns/tick) | rdtscp cycles                | ns (estimated 3.7GHz) |
+| Pinning    | QoS hinty              | isolated cores 0, 1          | X                     |
+| p0.1       | 41 ns                  | 256 cycles (~69 ns @ 3.7GHz) | ~69 ns                |
+| p1         | 41 ns                  | 270 cycles                   |                       |
+| p25        | 83 ns                  | 273 cycles                   |                       |
+| p50        | 83 ns                  | 274 cycles (~74 ns)          |                       |
+| p75        | 84 ns                  | 276 cycles                   |                       |
+| p99        | 125 ns                 | 369 cycles (~100 ns)         |                       |
+| p99.9      | 167 ns                 | 387 cycles (~105 ns)         |                       |
+
 
 Key findings to cover in prose:
 

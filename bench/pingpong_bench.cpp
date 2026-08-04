@@ -58,20 +58,44 @@ auto percentile(double percentage) {
 /**************** Main Function ****************/
 int main() {
     check_cpu_governor();
+
+    double tsc_ghz = 0.0;
+#ifdef __linux__
+    std::cout << "Calibrating TSC frequency...\n";
+    tsc_ghz = calibrate_tsc_ghz();
+    std::cout << "TSC: " << tsc_ghz << " GHz\n";
+    std::cout << "Core 0: " << read_core_freq_mhz(0) << " MHz"
+              << "  Core 1: " << read_core_freq_mhz(1) << " MHz  (before)\n";
+#endif
+
     round_trip_samples.reserve(NUM_ROUND_TRIPS);
     std::thread thread1(sender_thread);
     std::thread thread2(receiver_thread);
     thread1.join();
     thread2.join();
 
+#ifdef __linux__
+    std::cout << "Core 0: " << read_core_freq_mhz(0) << " MHz"
+              << "  Core 1: " << read_core_freq_mhz(1) << " MHz  (after)\n";
+#endif
+
     std::sort(round_trip_samples.begin(), round_trip_samples.end());
     const char* unit = timing_unit();
-    std::cout << "p0.1: "  << percentile(0.001)  << " " << unit << "\n";
-    std::cout << "p1: "    << percentile(0.01)   << " " << unit << "\n";
-    std::cout << "p25: "   << percentile(0.25)   << " " << unit << "\n";
-    std::cout << "p50: "   << percentile(0.50)   << " " << unit << "\n";
-    std::cout << "p75: "   << percentile(0.75)   << " " << unit << "\n";
-    std::cout << "p99: "   << percentile(0.99)   << " " << unit << "\n";
-    std::cout << "p99.9: " << percentile(0.999)  << " " << unit << "\n";
+
+    auto print_pct = [&](const char* label, double pct) {
+        int64_t val = percentile(pct);
+        std::cout << label << val << " " << unit;
+        if (tsc_ghz > 0.0)
+            std::cout << " (~" << static_cast<int64_t>(static_cast<double>(val) / tsc_ghz) << " ns)";
+        std::cout << "\n";
+    };
+
+    print_pct("p0.1:  ", 0.001);
+    print_pct("p1:    ", 0.01);
+    print_pct("p25:   ", 0.25);
+    print_pct("p50:   ", 0.50);
+    print_pct("p75:   ", 0.75);
+    print_pct("p99:   ", 0.99);
+    print_pct("p99.9: ", 0.999);
     return !(counter == NUM_ROUND_TRIPS);
 }
