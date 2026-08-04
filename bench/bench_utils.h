@@ -59,6 +59,16 @@ inline long read_core_freq_mhz(int core_id) {
     return freq_khz > 0 ? freq_khz / 1000 : -1;
 }
 
+inline void spin_hint() {
+    _mm_pause();
+}
+
+inline uint64_t rdtsc() {
+    unsigned int lo, hi, aux;
+    __asm__ __volatile__("rdtscp" : "=a"(lo), "=d"(hi), "=c"(aux));
+    return (static_cast<uint64_t>(hi) << 32) | lo;
+}
+
 // Calibrates TSC frequency by correlating rdtscp against CLOCK_MONOTONIC_RAW
 // over a 200ms sleep. Returns GHz. TSC is invariant on Intel — this gives the
 // actual conversion factor, independent of CPU boost state.
@@ -70,19 +80,9 @@ inline double calibrate_tsc_ghz() {
     nanosleep(&req, nullptr);
     uint64_t t1_tsc = rdtsc();
     clock_gettime(CLOCK_MONOTONIC_RAW, &t1_wall);
-    double ns_elapsed = (t1_wall.tv_sec  - t0_wall.tv_sec)  * 1e9
-                      + (t1_wall.tv_nsec - t0_wall.tv_nsec);
+    double ns_elapsed = static_cast<double>(t1_wall.tv_sec  - t0_wall.tv_sec)  * 1e9
+                      + static_cast<double>(t1_wall.tv_nsec - t0_wall.tv_nsec);
     return static_cast<double>(t1_tsc - t0_tsc) / ns_elapsed;
-}
-
-inline void spin_hint() {
-    _mm_pause();
-}
-
-inline uint64_t rdtsc() {
-    unsigned int lo, hi, aux;
-    __asm__ __volatile__("rdtscp" : "=a"(lo), "=d"(hi), "=c"(aux));
-    return (static_cast<uint64_t>(hi) << 32) | lo;
 }
 
 inline const char* timing_unit() { return "cycles"; }
