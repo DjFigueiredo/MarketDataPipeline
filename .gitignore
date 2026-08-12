@@ -7,3 +7,7 @@ notes/external/
 *.xlsx
 *.DS_Store
 third_party
+.venv/
+scripts/spsc_queue_head_to_head/spsc_head_to_head.md
+scripts/spsc_queue_head_to_head/spsc_head_to_head.csv
+scripts/spsc_queue_head_to_head/*.png
