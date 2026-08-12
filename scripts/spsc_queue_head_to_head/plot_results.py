@@ -30,7 +30,7 @@ SURFACE = "#fcfcfb"
 
 PERCENTILE_METRICS = ["p25_ns", "p50_ns", "p75_ns", "p99_ns"]
 PERCENTILE_LABELS = ["P25", "P50", "P75", "P99"]
-TC_TITLES = {1: "TC1 — throughput", 2: "TC2 — req/resp"}
+TC_TITLES = {1: "TC1 — throughput", 2: "TC2 — req/resp", 3: "TC3 — burst drain"}
 METRIC_LABELS = {
     "cycles": "CPU cycles",
     "instructions": "Instructions retired",
