@@ -39,6 +39,15 @@ METRIC_LABELS = {
     "ipc": "Instructions per cycle (IPC)",
     "llc_misses_per_kinstr": "LLC misses / 1K instructions",
 }
+# Filename-safe tags used to build one-file-per-chart names, e.g. TC1_Cycles.png.
+METRIC_FILE_TAGS = {
+    "cycles": "Cycles",
+    "instructions": "Instructions",
+    "llc_load_misses": "LLC_Misses",
+    "elapsed_sec": "Elapsed",
+    "ipc": "IPC",
+    "llc_misses_per_kinstr": "LLC_Misses_per_Kinstr",
+}
 
 
 def load_rows(csv_path):
@@ -106,68 +115,68 @@ def add_legend(fig, axes, targets, y):
 
 
 def plot_perf_metric(rows, metric, out_dir):
+    """One PNG per (test_case, metric) — e.g. TC1_Cycles.png, TC2_IPC.png."""
     metric_rows = [r for r in rows if r["metric"] == metric]
     if not metric_rows:
-        return None
-    present_tcs = sorted({r["test_case"] for r in metric_rows})
-    targets = targets_present(metric_rows)
+        return []
 
-    fig, axes = plt.subplots(1, len(present_tcs), figsize=(6 * len(present_tcs), 4.5),
-                              facecolor=SURFACE)
-    axes = [axes] if len(present_tcs) == 1 else list(axes)
-
-    for ax, tc in zip(axes, present_tcs):
+    written = []
+    for tc in sorted({r["test_case"] for r in metric_rows}):
         tc_rows = [r for r in metric_rows if r["test_case"] == tc]
+        targets = targets_present(tc_rows)
         sizes = sorted({r["queue_size"] for r in tc_rows})
         values_by_target = {t: {} for t in targets}
         for r in tc_rows:
             values_by_target[r["target"]][r["queue_size"]] = r["value"]
+
+        fig, ax = plt.subplots(figsize=(6.5, 4.5), facecolor=SURFACE)
         bar_group(ax, sizes, values_by_target, targets)
         style_axes(ax)
         ax.set_xlabel("Queue size (N)")
         ax.set_ylabel(METRIC_LABELS.get(metric, metric))
-        ax.set_title(TC_TITLES.get(tc, f"TC{tc}"), fontsize=11, loc="left")
 
-    add_legend(fig, axes, targets, 1.04)
-    fig.suptitle(f"SPSC queue comparison — {METRIC_LABELS.get(metric, metric)}",
-                 color=INK_PRIMARY, fontsize=13, y=1.14)
-    fig.tight_layout()
-    out_path = out_dir / f"{metric}_comparison.png"
-    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
-    plt.close(fig)
-    return out_path
+        add_legend(fig, [ax], targets, 1.06)
+        fig.suptitle(f"{TC_TITLES.get(tc, f'TC{tc}')} — {METRIC_LABELS.get(metric, metric)}",
+                     color=INK_PRIMARY, fontsize=13, y=1.16)
+        fig.tight_layout()
+        tag = METRIC_FILE_TAGS.get(metric, metric)
+        out_path = out_dir / f"TC{tc}_{tag}.png"
+        fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+        plt.close(fig)
+        written.append(out_path)
+    return written
 
 
 def plot_percentiles(rows, out_dir):
+    """One PNG per queue size — e.g. TC3_N128_Percentiles.png."""
     tc3_rows = [r for r in rows if r["metric"] in PERCENTILE_METRICS]
     if not tc3_rows:
-        return None
-    sizes = sorted({r["queue_size"] for r in tc3_rows})
-    targets = targets_present(tc3_rows)
+        return []
 
-    fig, axes = plt.subplots(1, len(sizes), figsize=(5 * len(sizes), 4.5), facecolor=SURFACE)
-    axes = [axes] if len(sizes) == 1 else list(axes)
-
-    for ax, qsize in zip(axes, sizes):
+    written = []
+    for qsize in sorted({r["queue_size"] for r in tc3_rows}):
         size_rows = [r for r in tc3_rows if r["queue_size"] == qsize]
+        targets = targets_present(size_rows)
         values_by_target = {t: {} for t in targets}
         for r in size_rows:
             values_by_target[r["target"]][r["metric"]] = r["value"]
+
+        fig, ax = plt.subplots(figsize=(5.5, 4.5), facecolor=SURFACE)
         bar_group(ax, PERCENTILE_METRICS, values_by_target, targets)
         style_axes(ax)
         ax.set_xticklabels(PERCENTILE_LABELS)
         ax.set_xlabel("Percentile")
         ax.set_ylabel("Latency (ns)")
-        ax.set_title(f"N={qsize}", fontsize=11, loc="left")
 
-    add_legend(fig, axes, targets, 1.06)
-    fig.suptitle("SPSC queue comparison — TC3 burst latency percentiles",
-                 color=INK_PRIMARY, fontsize=13, y=1.16)
-    fig.tight_layout()
-    out_path = out_dir / "percentiles_comparison.png"
-    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
-    plt.close(fig)
-    return out_path
+        add_legend(fig, [ax], targets, 1.06)
+        fig.suptitle(f"TC3 burst latency percentiles — N={qsize}",
+                     color=INK_PRIMARY, fontsize=13, y=1.16)
+        fig.tight_layout()
+        out_path = out_dir / f"TC3_N{qsize}_Percentiles.png"
+        fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=SURFACE)
+        plt.close(fig)
+        written.append(out_path)
+    return written
 
 
 def main():
@@ -185,9 +194,10 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     perf_metrics = sorted({r["metric"] for r in rows if r["metric"] not in PERCENTILE_METRICS})
-    written = [p for m in perf_metrics if (p := plot_perf_metric(rows, m, args.out_dir))]
-    if (p := plot_percentiles(rows, args.out_dir)):
-        written.append(p)
+    written = []
+    for m in perf_metrics:
+        written.extend(plot_perf_metric(rows, m, args.out_dir))
+    written.extend(plot_percentiles(rows, args.out_dir))
 
     if not written:
         raise SystemExit("No known metrics found in CSV — nothing plotted.")
