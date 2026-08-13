@@ -20,19 +20,19 @@ What follows are the results from a counter contention ladder (V1-V4), a pingpon
 
 ## Hardware Specifications
 
-|                | MacBook Pro (ARM64)                                                                   | Dell Precision 3640 (x86-64)                         |
-| -------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| CPU            | Apple M3 Pro (6P + 6E cores, 12 total)                                                | Intel i9-10900, 10C/20T, Comet Lake                  |
-| Architecture   | ARM64                                                                                 | x86-64                                               |
-| OS             | macOS Sequoia 15.7.3                                                                  | Ubuntu 24.04 (bare metal)                            |
-| RAM            | 36 GB                                                                                 | 32 GB                                                |
-| Kernel         | 24.6.0                                                                                | 6.8.0-28-generic                                     |
-| Cache Line     | 128 bytes (measured via`sysctl`)                                                    | 64 bytes                                             |
-| L1d / L1i      | P-core: 128 KiB / 192 KiB; E-core: 64 KiB / 128 KiB (measured; no published spec)     | 32 KiB / 32 KiB per core                             |
-| L2             | P-core: 16 MiB per cluster; E-core: 4 MiB (measured; no published spec)               | 256 KiB per core                                     |
-| L3             | No conventional L3; a system-level cache serves the role (size unpublished; inferred) | 20 MiB (shared)                                      |
-| Timer          | `mach_absolute_time`, 24 MHz, ~42 ns/tick                                           | `rdtscp`, serialized cycle counter                 |
-| Thread Pinning | `pthread_set_qos_class_self_np` (QoS hint only, no hard affinity API)               | `pthread_setaffinity_np`                           |
+|                | MacBook Pro (ARM64)                                                                   | Dell Precision 3640 (x86-64)                   |
+| -------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| CPU            | Apple M3 Pro (6P + 6E cores, 12 total)                                                | Intel i9-10900, 10C/20T, Comet Lake            |
+| Architecture   | ARM64                                                                                 | x86-64                                         |
+| OS             | macOS Sequoia 15.7.3                                                                  | Ubuntu 24.04 (bare metal)                      |
+| RAM            | 36 GB                                                                                 | 32 GB                                          |
+| Kernel         | 24.6.0                                                                                | 6.8.0-28-generic                               |
+| Cache Line     | 128 bytes (measured via`sysctl`)                                                      | 64 bytes                                       |
+| L1d / L1i      | P-core: 128 KiB / 192 KiB; E-core: 64 KiB / 128 KiB (measured; no published spec)     | 32 KiB / 32 KiB per core                       |
+| L2             | P-core: 16 MiB per cluster; E-core: 4 MiB (measured; no published spec)               | 256 KiB per core                               |
+| L3             | No conventional L3; a system-level cache serves the role (size unpublished; inferred) | 20 MiB (shared)                                |
+| Timer          | `mach_absolute_time`, 24 MHz, ~42 ns/tick                                             | `rdtscp`, serialized cycle counter             |
+| Thread Pinning | `pthread_set_qos_class_self_np` (QoS hint only, no hard affinity API)                 | `pthread_setaffinity_np`                       |
 | Core Isolation | N/A                                                                                   | `isolcpus=0,1,2,3` + `nohz_full` + `rcu_nocbs` |
 
 ---
