@@ -35,18 +35,22 @@ METRIC_LABELS = {
     "cycles": "CPU cycles",
     "instructions": "Instructions retired",
     "llc_load_misses": "LLC load misses",
+    "l1_dcache_load_misses": "L1 dcache load misses",
     "elapsed_sec": "Elapsed time (s)",
     "ipc": "Instructions per cycle (IPC)",
     "llc_misses_per_kinstr": "LLC misses / 1K instructions",
+    "l1_misses_per_kinstr": "L1 dcache misses / 1K instructions",
 }
 # Filename-safe tags used to build one-file-per-chart names, e.g. TC1_Cycles.png.
 METRIC_FILE_TAGS = {
     "cycles": "Cycles",
     "instructions": "Instructions",
     "llc_load_misses": "LLC_Misses",
+    "l1_dcache_load_misses": "L1_Misses",
     "elapsed_sec": "Elapsed",
     "ipc": "IPC",
     "llc_misses_per_kinstr": "LLC_Misses_per_Kinstr",
+    "l1_misses_per_kinstr": "L1_Misses_per_Kinstr",
 }
 
 

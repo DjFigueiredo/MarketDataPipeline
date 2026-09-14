@@ -17,7 +17,19 @@ TEST_CASES=(1 2 3)
 # Each (target, queue_size, test_case) is measured this many times; the
 # final CSV holds the per-metric median across those runs, not a single
 # noisy sample. Raw per-run values are kept in RAW_CSV for audit.
+# TC1 measured noisier run-to-run than TC2/TC3 even under median-of-3 (up to
+# ~70% spread between runs at some N) and it's cheap (~0.1-0.2s/run), so it
+# gets extra repeats; TC2/TC3 were already stable at 3.
 REPEATS=3
+REPEATS_TC1=7
+
+repeats_for_tc() {
+    if [[ "$1" == "1" ]]; then
+        echo "$REPEATS_TC1"
+    else
+        echo "$REPEATS"
+    fi
+}
 
 mkdir -p "$(dirname "$OUT")"
 echo "target,queue_size,test_case,run,metric,value" > "$RAW_CSV"
@@ -27,18 +39,24 @@ echo "target,queue_size,test_case,run,metric,value" > "$RAW_CSV"
 emit_csv_rows() {
     local target="$1" qsize="$2" tc="$3" run="$4" text="$5"
 
-    # Also derives ipc (instructions/cycle) and llc_misses_per_kinstr
-    # (LLC-load-misses per 1K instructions) from the raw counters —
-    # raw miss counts alone aren't comparable across targets that do
-    # different amounts of total work per op.
+    # Also derives ipc (instructions/cycle), llc_misses_per_kinstr, and
+    # l1_misses_per_kinstr (misses per 1K instructions) from the raw
+    # counters — raw miss counts alone aren't comparable across targets
+    # that do different amounts of total work per op.
+    # L1-dcache-load-misses was added to test the hypothesis that the
+    # per-slot alignas(CACHE_LINE_SIZE) padding pushes buf_ out of L1 at
+    # larger N (32KB at N=512, 64KB at N=1024 for a padded int slot) —
+    # it's what caused the observed TC3 cycle regression at N>=512.
     awk -v t="$target" -v q="$qsize" -v c="$tc" -v r="$run" '
-        /[[:space:]]cycles([[:space:]]|$)/           { gsub(",", "", $1); cycles=$1; print t","q","c","r",cycles,"$1 }
-        /[[:space:]]instructions([[:space:]]|$)/     { gsub(",", "", $1); instr=$1; print t","q","c","r",instructions,"$1 }
-        /[[:space:]]LLC-load-misses([[:space:]]|$)/  { gsub(",", "", $1); misses=$1; print t","q","c","r",llc_load_misses,"$1 }
-        /seconds time elapsed/                       { print t","q","c","r",elapsed_sec,"$1 }
+        /[[:space:]]cycles([[:space:]]|$)/               { gsub(",", "", $1); cycles=$1; print t","q","c","r",cycles,"$1 }
+        /[[:space:]]instructions([[:space:]]|$)/         { gsub(",", "", $1); instr=$1; print t","q","c","r",instructions,"$1 }
+        /[[:space:]]LLC-load-misses([[:space:]]|$)/      { gsub(",", "", $1); misses=$1; print t","q","c","r",llc_load_misses,"$1 }
+        /[[:space:]]L1-dcache-load-misses([[:space:]]|$)/{ gsub(",", "", $1); l1misses=$1; print t","q","c","r",l1_dcache_load_misses,"$1 }
+        /seconds time elapsed/                           { print t","q","c","r",elapsed_sec,"$1 }
         END {
             if (cycles > 0) printf "%s,%s,%s,%s,ipc,%.6f\n", t, q, c, r, instr / cycles
             if (instr > 0)  printf "%s,%s,%s,%s,llc_misses_per_kinstr,%.6f\n", t, q, c, r, (misses / instr) * 1000
+            if (instr > 0)  printf "%s,%s,%s,%s,l1_misses_per_kinstr,%.6f\n", t, q, c, r, (l1misses / instr) * 1000
         }
     ' <<< "$text" >> "$RAW_CSV"
 
@@ -88,7 +106,7 @@ compute_medians() {
     echo "Generated: $(date)"
     echo "Host:      $(uname -n)"
     echo "Kernel:    $(uname -r)"
-    echo "Repeats:   $REPEATS (median reported in CSV)"
+    echo "Repeats:   $REPEATS (median reported in CSV); TC1: $REPEATS_TC1"
     echo ""
 
     for target in "${TARGETS[@]}"; do
@@ -105,11 +123,11 @@ compute_medians() {
                 echo "#### TC$tc"
                 echo ""
 
-                for run in $(seq 1 "$REPEATS"); do
+                for run in $(seq 1 "$(repeats_for_tc "$tc")"); do
                     echo "Run $run:"
                     echo '```'
 
-                    result=$(perf stat -e cycles,instructions,LLC-load-misses \
+                    result=$(perf stat -e cycles,instructions,LLC-load-misses,L1-dcache-load-misses \
                         "$BENCH" "$target" "$tc" "$qsize" 2>&1)
 
                     echo "$result"
