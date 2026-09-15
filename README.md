@@ -8,41 +8,48 @@ Low-latency systems portfolio project targeting junior Performance/Systems Engin
 
 ```
 bench/
-  bench_utils.h          platform utilities: CACHE_LINE_SIZE, pin_thread_to_core,
-                         check_cpu_governor, parse_bench_args
-  counter_bench.cpp      4-variant counter contention ladder (mutex / atomic /
-                         sharded unpadded / sharded padded alignas)
-  pingpong_bench.cpp     acquire/release round-trip: two threads, one atomic flag,
-                         Mode 1 (same cache line) vs Mode 2 (separate cache lines)
-  spsc_bench.cpp         1024-slot SPSC ring buffer: Item (4B) vs PaddedItem
-                         (alignas(CACHE_LINE_SIZE))
+  bench_utils.h            platform utilities: CACHE_LINE_SIZE, pin_thread_to_core,
+                           check_cpu_governor, parse_bench_args
+  counter_bench.cpp        4-variant counter contention ladder (mutex / atomic /
+                           sharded unpadded / sharded padded alignas)
+  pingpong_bench.cpp       acquire/release round-trip: two threads, one atomic flag,
+                           Mode 1 (same cache line) vs Mode 2 (separate cache lines)
+  spsc_bench.cpp           1024-slot SPSC ring buffer: Item (4B) vs PaddedItem
+                           (alignas(CACHE_LINE_SIZE))
+  spsc_head_to_head.cpp    head-to-head throughput/latency: this repo's SpscQueue vs
+                           rigtorp / moodycamel / folly / boost SPSC queues
 
 spsc/
-  SpscQueue.h            lock-free SPSC ring buffer header (used by spsc_bench)
+  SpscQueue.h              lock-free SPSC ring buffer header (used by spsc_bench,
+                           spsc_head_to_head)
 
 experiments/
-  cas_spinlock.cpp       CAS spinlock with 4-thread fairness measurement
-  broken_aba.cpp         lock-free stack ABA demo — fires deterministically
-  move_semantics.cpp     Rule of 5 buffer struct
-  unique_ptr.cpp         template UniquePtr<T>
+  cas_spinlock.cpp         CAS spinlock with 4-thread fairness measurement
+  broken_aba.cpp           lock-free stack ABA demo — fires deterministically
+  move_semantics.cpp       Rule of 5 buffer struct
+  unique_ptr.cpp           template UniquePtr<T>
+
+scripts/
+  spsc_queue_head_to_head/ driver script + plotting for spsc_head_to_head across queue
+                           implementations and sizes; generated CSVs/plots are gitignored
 
 notes/
-  ARM64_X86_RESEARCH.md  main writeup: counter + pingpong + SPSC results,
-                         mechanism analysis, Mac vs Linux hardware counter tables
-  Benchmark_Findings.md  earlier counter_bench + pingpong writeup (superseded
-                         by ARM64_X86_RESEARCH.md for cross-platform analysis)
-  Flashcards/            Obsidian spaced-repetition cards (memory orders, CAS/ABA,
-                         false sharing, SPSC)
-  external/
-    BENCHMARK_LOG.md     all raw timing and perf/xctrace output, derived tables
-    BENCHMARK_PROCEDURE.md  step-by-step procedure for reproducible runs
-    disasm_mac.txt       llvm-objdump output for all three bench binaries
-    Guides/              reference guides (cache/hardware, lock-free patterns,
-                         SPSC design, ARM64/x86 research guidelines)
+  LinkedIn/                published write-ups: ARM64 vs x86 Synchronization,
+                           SPSC Head-to-Head (.md + .pdf)
+  flashcards/              Obsidian spaced-repetition cards (memory orders, CAS/ABA,
+                           false sharing, SPSC)
+  Designs/                 paper designs, promoted here once finished and reviewed —
+                           see notes/Designs/README.md for the promotion rule
+  external/                gitignored — raw logs, Claude-authored working docs, in-progress/
+                           unreviewed design docs, personal study material, superseded drafts
 
-feed/                    stub (ITCH 5.0 decoder — not started)
-lob/                     stub (limit order book — not started)
-pipeline/                stub (end-to-end integration — not started)
+feed/                      stub (ITCH 5.0 decoder — not started)
+lob/                       stub (limit order book — not started)
+pipeline/                  stub (end-to-end integration — not started)
+
+third_party/                gitignored — vendored SPSC queues used only by
+                           spsc_head_to_head (rigtorp, readerwriterqueue/moodycamel,
+                           folly); not committed, pulled in locally as needed
 ```
 
 ---
@@ -69,16 +76,14 @@ cmake --build build-tsan -j
 
 ## Benchmarking Methodology
 
-All timing numbers come from pinned bare-metal runs, not CI. Methodology is documented in full in `notes/external/BENCHMARK_PROCEDURE.md`. Key points:
+All timing numbers come from pinned bare-metal runs, not CI. Key points:
 
 - **Linux:** `rdtscp` (2.808 GHz calibrated TSC), `pthread_setaffinity_np`, `isolcpus=0,1,2,3 nohz_full rcu_nocbs`, governor set to `performance`
 - **macOS:** `mach_absolute_time` (24 MHz, ~42 ns/tick quantization), QoS hint only (no hard affinity), Low Power Mode disabled
 - **Hardware counters:** `perf stat` on Linux, `xctrace` + Instruments on macOS
 - **In-process best-of-N harness** — more stable than relaunching the binary N times
 
-Raw output and derived tables: `notes/external/BENCHMARK_LOG.md`
-
-Full cross-platform analysis: `notes/ARM64_X86_RESEARCH.md`
+Full write-ups: `notes/LinkedIn/ARM64 vs X86 Synchronization.md` and `notes/LinkedIn/SPSC_Head_to_Head.md`. Raw output and derived tables are kept locally in `notes/external/logs/` (gitignored, not published).
 
 ---
 

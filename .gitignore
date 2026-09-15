@@ -1,16 +1,24 @@
+# Build artifacts
 build/
 build-*/
 compile_commands.json
 .cache/
-notes/.obsidian
+
+# Personal/non-published notes (raw logs, Claude-authored docs, study material, superseded drafts)
 notes/external/
-*.xlsx
-*.DS_Store
-third_party
-.venv/
+notes/.obsidian
+
+# Generated benchmark data/plots
 scripts/spsc_queue_head_to_head/*.md
 scripts/spsc_queue_head_to_head/*.csv
 scripts/spsc_queue_head_to_head/*.png
 scripts/*.png
-scripts/spsc_queue_head_to_head/old
-notes/LinkedIn/SPSC_Head_to_Head
+
+# Misc
+*.xlsx
+*.DS_Store
+third_party
+.venv/
+
+# Claude Code local settings (machine-specific, not for version control)
+.claude/settings.local.json
